@@ -1,0 +1,550 @@
+---
+title: "RCMEM2 Examples"
+author: "James R Holmquist"
+date: "2026-03-11"
+output: html_document
+---
+
+## Things you can do in version 2
+
+First, let's set up some scenarios to run some comparisons over. These are from Annapolis MD and are based on the Ecological Monographs paper in review.
+
+```{r parameters}
+
+  library(tidyverse)
+
+  # SLR
+  annapolis_gap_filled <- read_csv("../inst/extdata/sea_level/annapolis_gap_filled.csv")
+
+  loess_model <- loess(msl_cm~year, data = annapolis_gap_filled)
+  annapolis_gap_filled$loess_msl <- predict(loess_model, data.frame(year = annapolis_gap_filled$year))
+
+  meanSeaLevel = annapolis_gap_filled$loess_msl
+  meanSeaLevelDatum = -1.958671252
+  meanHighWaterDatum = 5.521639027
+  meanHighHighWaterDatum = 19.81578852
+  meanHighHighWaterSpringDatum=26.25399172
+  lunarNodalAmp = 0
+  # suspendedSediment = 22 * 1e-06, # assume 75.8 mg/l in creek and interior is 1/3 to 1/4 creek
+
+  meanHighWater <- meanHighWaterDatum-meanSeaLevelDatum
+  meanHighHighWater <- meanHighHighWaterDatum-meanSeaLevelDatum
+  meanHighHighWaterSpring <- meanHighHighWaterSpringDatum-meanSeaLevelDatum
+
+  # suspendedSediment = 10 * 1e-06 # original
+  nFloods <- 3
+  flood_frequency <- c(0.5, 0.46497542, 0.03502458) * 705.79
+  msl <- meanSeaLevel
+  mhwMat <- matrix(c(msl+meanHighWater,msl+meanHighHighWater,msl+meanHighHighWaterSpring),
+                   ncol = 3)
+  mlwMat <- msl - (mhwMat-msl)
+
+  roxygen2::roxygenise("..")
+  
+```
+
+## Batching Scenarios
+
+We can now batch multiple years into a single cohort. This allows us to modulate run time. Run time increases geometrically with each cohort added. Batching multiple years in a single cohort means lower run time.
+
+```{r batching scenario}
+
+run_times <- c(NA, NA, NA, NA, NA)
+
+start <- Sys.time()
+
+scenario_1 <- runCohortMem2(run_spinup = 1, 
+                                  run_scenario = 1,
+                                  msl = msl,
+                                  mhwMat = mhwMat,
+                                  mlwMat = mlwMat,
+                                  spinup_iterations = 200, 
+                                  years_per_spinup_iter = 1,
+                                  rootShape = c(0,0))[[2]] %>% 
+  mutate(spinup_settings = "1 year iter, 200 iterations")
+
+end <- Sys.time()
+
+run_times[1] <- end-start
+
+start <- Sys.time()
+
+scenario_2 <- runCohortMem2(run_spinup = 1, 
+                                  run_scenario = 1,
+                                  msl = msl,
+                                  mhwMat = mhwMat,
+                                  mlwMat = mlwMat,
+                                  spinup_iterations = 100, 
+                                  years_per_spinup_iter = 2,
+                                  rootShape = c(0,0))[[2]] %>% 
+  mutate(spinup_settings = "2 year iter, 100 iterations")
+
+end <- Sys.time()
+
+run_times[2] <- end-start
+
+start <- Sys.time()
+
+scenario_5 <- runCohortMem2(run_spinup = 1, 
+                                  run_scenario = 1,
+                                  msl = msl,
+                                  mhwMat = mhwMat,
+                                  mlwMat = mlwMat,
+                                  spinup_iterations = 40, 
+                                  years_per_spinup_iter = 5,
+                                  rootShape = c(0,0))[[2]] %>% 
+  mutate(spinup_settings = "5 year iter, 40 iterations")
+
+end <- Sys.time()
+
+run_times[3] <- end-start
+
+start <- Sys.time()
+
+scenario_10 <- runCohortMem2(run_spinup = 1, 
+                                  run_scenario = 1,
+                                  msl = msl,
+                                  mhwMat = mhwMat,
+                                  mlwMat = mlwMat,
+                                  spinup_iterations = 20, 
+                                  years_per_spinup_iter = 10,
+                                  rootShape = c(0,0))[[2]] %>% 
+  mutate(spinup_settings = "10 year iter, 20 iterations")
+
+end <- Sys.time()
+
+run_times[4] <- end-start
+
+start <- Sys.time()
+
+
+scenario_20 <- runCohortMem2(run_spinup = 1, 
+                                   run_scenario = 1,
+                                   msl = msl,
+                                   mhwMat = mhwMat,
+                                   mlwMat = mlwMat,
+                                   spinup_iterations = 10, 
+                                   years_per_spinup_iter = 20,
+                                   rootShape = c(0,0)) [[2]] %>% 
+  mutate(spinup_settings = "20 year iter, 10 iterations")
+
+end <- Sys.time()
+
+run_times[5] <- end-start
+
+plot(x = c(200, 100, 40, 20, 10), y = run_times, xlab = "N initial cohorts", ylab = "Runtime",
+     type = "o")
+
+```
+
+
+```{r output comparisons}
+
+scenarios <- scenario_1 %>% 
+  bind_rows(scenario_5) %>% 
+  bind_rows(scenario_20) %>% 
+  select(year, surface_elevation, aboveground_biomass, belowground_biomass, totalRootVolume, spinup_settings) %>% 
+  pivot_longer(names_to = "variable", -c(year, spinup_settings))
+
+ggplot(scenarios, aes(x = year, y = value)) +
+  facet_wrap(.~variable, scale = "free_y") +
+  geom_point(aes(color = spinup_settings, shape = spinup_settings)) + 
+  scale_shape_manual(values = c(1,3,4)) +
+  xlim(c(1900, 2018))
+
+```
+
+## We can also run multip types of competition function
+
+Setting competition function to zero means zero-sum. If multiple sets of biological species.  
+
+```{r plant competition functions}
+# Preprogrammed
+args(runCohortMem2)
+
+species_10a <- runCohortMem2(run_spinup = 1, 
+                                   run_scenario = 1,
+                                   msl = msl,
+                                   mhwMat = mhwMat,
+                                   mlwMat = mlwMat,
+                                   spinup_iterations = 20, 
+                                   years_per_spinup_iter = 10,
+                                   competition_function = 0,
+                                   rootShape = c(1,1),
+                             species_codes = c("SCAM", "SPPA"))[[3]] %>% 
+  as.data.frame() %>% 
+  mutate(spinup_settings = "Zero-sum")
+
+species_10b <- runCohortMem2(run_spinup = 1, 
+                                   run_scenario = 1,
+                                   msl = msl,
+                                   mhwMat = mhwMat,
+                                   mlwMat = mlwMat,
+                                   spinup_iterations = 20, 
+                                   years_per_spinup_iter = 10,
+                                   competition_function = 1,
+                                   rootShape = c(1,1),
+                              species_codes = c("SCAM", "SPPA")) [[3]] %>% 
+  as.data.frame() %>% 
+  mutate(spinup_settings = "Co-existance")
+
+
+species_codes <- c("SCAM", "SPPA")
+
+species_plot <- species_10b %>% 
+  bind_rows(species_10a) %>% 
+  gather(key = "species", value = "aboveground_biomass", -c(year, spinup_settings)) %>%
+  mutate(species = factor(species, levels = rev(species_codes))) %>% 
+  group_by(spinup_settings, year) %>% 
+  mutate(cumulative_biomass = cumsum(aboveground_biomass))
+
+ggplot(species_plot, aes(x = year, y = cumulative_biomass)) +
+  geom_ribbon(aes(ymax = cumulative_biomass, ymin = 0, fill = species)) +
+  facet_wrap(.~spinup_settings)
+
+```
+
+## Separate Runs and Spinups
+
+``` {r separate runs and spinups}
+
+mem_1 <- runCohortMem2(run_spinup = 1, 
+                             run_scenario = 1,
+                             msl = msl,
+                             mhwMat = mhwMat,
+                             mlwMat = mlwMat,
+                             scenario_calendar_years = 1928:2018,
+                             spinup_iterations = 20, 
+                             years_per_spinup_iter = 10) [[2]] %>% 
+  mutate(run = "Full run")
+
+mem_1_cohorts <- runCohortMem2(run_spinup = 1, 
+                                     run_scenario = 1,
+                                     msl = msl,
+                                     mhwMat = mhwMat,
+                                     mlwMat = mlwMat,
+                                     scenario_calendar_years = 1928:2018,
+                                     spinup_iterations = 20, 
+                                     years_per_spinup_iter = 10) [[1]] %>% 
+  mutate(run = "Full run")
+
+mem_2a <- runCohortMem2(run_spinup = 1, 
+                              run_scenario = 0,
+                              msl = msl[1],
+                              mhwMat = t(mhwMat[1,]),
+                              mlwMat = t(mlwMat[1,]),
+                              scenario_calendar_years = 1928,
+                              spinup_iterations = 20, 
+                              years_per_spinup_iter = 10)
+
+cohort_2a <- mem_2a[[1]] %>%
+  filter(year == 1928)
+
+scenario_2a <- mem_2a[[2]] %>%
+  filter(year == 1928)
+
+species_2a <- mem_2a[[3]] %>% 
+  filter(year == 1928)
+
+mem_2b <- runCohortMem2(run_spinup = 0, 
+                              run_scenario = 1,
+                              msl = msl,
+                              mhwMat = mhwMat,
+                              mlwMat = mlwMat,
+                              initial_cohorts = cohort_2a,
+                              initial_scenario = scenario_2a,
+                              initial_species = species_2a,
+)[[2]] %>% 
+  mutate(run = "Cohorta and scenario run separately")
+
+mem_2b_cohorts <- runCohortMem2(run_spinup = 0, 
+                                      run_scenario = 1,
+                                      msl = msl,
+                                      mhwMat = mhwMat,
+                                      mlwMat = mlwMat,
+                                      initial_cohorts = cohort_2a,
+                                      initial_scenario = scenario_2a,
+                                      initial_species = species_2a,
+)[[1]] %>% 
+  mutate(run = "Cohorta and scenario run separately")
+
+
+
+together <- bind_rows(mem_1,
+                      mem_2b)
+
+together_2 <- bind_rows(mem_1_cohorts,
+                        mem_2b_cohorts)
+
+ggplot(together, aes(x = year, y = surface_elevation)) +
+  geom_point(aes(color = run, shape = run))+
+  scale_shape_manual(values = c(1,3,4))
+
+ggplot(together, aes(x = year, y = aboveground_biomass)) +
+  geom_point(aes(color = run, shape = run))+
+  scale_shape_manual(values = c(1,3,4))
+
+```
+
+## Can we pass a hop test?
+
+```{r hop test, fig.width=14, fig.height=8}
+
+mem_full_run <- runCohortMem2(run_spinup = 1, 
+                             run_scenario = 1,
+                             msl = msl,
+                             mhwMat = mhwMat,
+                             mlwMat = mlwMat,
+                             scenario_calendar_years = 1928:2018,
+                             spinup_iterations = 20, 
+                             years_per_spinup_iter = 10,
+                             competition_function = 1)
+
+
+
+mem_2_hop <- runCohortMem2(run_spinup = 1, 
+                              run_scenario = 0,
+                              msl = msl[1],
+                              mhwMat = t(mhwMat[1,]),
+                              mlwMat = t(mlwMat[1,]),
+                              scenario_calendar_years = 1928,
+                              spinup_iterations = 20, 
+                              years_per_spinup_iter = 10,
+                             competition_function = 1)
+
+scenario_calendar_years <- 1928:2018
+
+for (i in 2:length(scenario_calendar_years)) {
+  
+  cohort_2a <- mem_2_hop[[1]] %>%
+    filter(year == scenario_calendar_years[i-1])
+
+  scenario_2a <- mem_2_hop[[2]] %>%
+    filter(year == scenario_calendar_years[i-1])
+
+  species_2a <- mem_2_hop[[3]] %>% 
+    filter(year == scenario_calendar_years[i-1])
+
+  mem_2_hop <- runCohortMem2(run_spinup = 0, 
+                              run_scenario = 1,
+                              msl = msl[(i-1):i],
+                              mhwMat = mhwMat[(i-1):i,],
+                              mlwMat = mlwMat[(i-1):i,],
+                              scenario_calendar_years = scenario_calendar_years[i-1]:scenario_calendar_years[i],
+                              initial_cohorts = cohort_2a,
+                              initial_scenario = scenario_2a,
+                              initial_species = species_2a,
+                             competition_function = 1)
+  
+  if (i == 2) {
+    
+    hop_cohorts <- mem_2_hop[[1]]
+    hop_scenario <- mem_2_hop[[2]]
+    hop_species <- mem_2_hop[[3]]
+    
+  } else {
+    
+    hop_cohorts <- hop_cohorts %>% bind_rows(mem_2_hop[[1]] %>% filter(year == scenario_calendar_years[i]))
+    hop_scenario <- hop_scenario %>% bind_rows(mem_2_hop[[2]] %>% filter(year == scenario_calendar_years[i]))
+    hop_species <- hop_species %>% bind_rows(mem_2_hop[[3]] %>% filter(year == scenario_calendar_years[i]))
+    
+  }
+  
+  
+  
+}
+
+mem_full_run_extended <- calculateCarbonFlux(
+  cohorts = mem_full_run[[1]]  %>% filter(year >= 1928),
+  scenario = mem_full_run[[2]]  %>% filter(year >= 1928)
+  )[[1]] %>% 
+  mutate(run = "Continuous Run") %>% 
+  left_join( mem_full_run[[3]])
+
+hop_test_extended <- calculateCarbonFlux(cohorts = hop_cohorts,
+                                         scenario = hop_scenario)[[1]] %>% 
+   mutate(run = "Hop Test") %>% 
+  left_join(hop_species)
+
+display_hop <- mem_full_run_extended %>% 
+  bind_rows(hop_test_extended) %>% 
+  pivot_longer(-c(year, run))
+
+ggplot(display_hop, aes(x = year, y = value)) +
+ # geom_point(aes(color = run, shape = run)) +
+  geom_line(aes(color = run, lty = run)) +
+  facet_wrap(.~name, scale = "free") +
+  #scale_shape_manual(values = c(3,4)) +
+  scale_linetype_manual(values = c(1,2))
+
+
+```
+
+## We can simulate radioisotope dates
+
+``` {r simulate radioisotopes}
+
+a_mem_run <- runCohortMem2(run_spinup = 1, 
+                           run_scenario = 1,
+                           msl = msl,
+                           mhwMat = mhwMat,
+                           mlwMat = mlwMat,
+                           spinup_iterations = 200, 
+                           years_per_spinup_iter = 20,
+                           rootShape = c(0),
+                           omDecayRateSlow = 0.0001,
+                           bMax = c(0.0622),
+                           rootTurnover = c(0.5),
+                           initElv = -11,
+                           recalcitrantFrac = 0.5,
+                           rootDepthMax = c(40),
+                           captureRate = 5,
+                           suspendedSediment = 10 * 1e-06,
+                           species_codes = "SCAM",
+                           zVegMax = 1.8,
+                           zVegPeak = 1.5, 
+                           zVegMin = - 1.4,
+                           abovegroundTurnover = 1.5,
+                           rootPackingDensity = 0.07,
+                           rootToShoot = 1.7
+                           )
+
+scenario <- a_mem_run[[2]]
+cohorts <- a_mem_run[[1]]
+
+head(a_mem_run[[1]])
+
+a_core <- buildSoilCore(cohorts = a_mem_run[[1]], coreYear = 2018, coreDepth = 200)
+
+head(a_core)
+
+# We need to pick a Cs 137 regional curve
+args(simulateRadioisotopeDates)
+
+# There are three curves prepackaged
+listCs137Scenarios()
+
+# Check them out
+scenario_dir <- system.file(
+    "extdata",
+    "fallout",
+    package = "rCMEM"
+  )
+  
+files <- list.files(
+  scenario_dir,
+  pattern = "\\.Rds$",
+  full.names = T
+)
+for (i in 1:length(files)) {
+  
+  cs_file <- readRDS(files[i])
+  
+  if (i == 1) {
+    cs_file_comp <- cs_file
+  } else {
+    cs_file_comp <- bind_rows(cs_file_comp, cs_file)
+  }
+  
+}
+
+ggplot(cs_file_comp, aes(x = year, y = cs137_influx_Bq_m2_yr)) +
+  geom_line(aes(color = Europe_or_non, lty=N_or_S))
+ 
+a_dates <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
+                                     pb210_mobility_factor = 0.01, 
+                                     cs137_mobility_factor = 0.01,
+                                     cs137_erosion_loss = 0.5, 
+                                     pb210_erosion_loss = 0.5) %>% 
+  mutate(core_type = "c. high erosion loss")
+
+a_dates_2 <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
+                                     pb210_mobility_factor = 0.01, 
+                                     cs137_mobility_factor = 0.01,
+                                     cs137_erosion_loss = 0.25, 
+                                     pb210_erosion_loss = 0.25) %>% 
+  mutate(core_type = "b. mid erosion loss")
+
+a_dates_3 <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
+                                     pb210_mobility_factor = 0.01, 
+                                     cs137_mobility_factor = 0.01,
+                                     cs137_erosion_loss = 0, 
+                                     pb210_erosion_loss = 0) %>% 
+  mutate(core_type = "a. low erosion loss")
+
+
+plot1 <- bind_rows(a_dates, a_dates_2, a_dates_3) %>% 
+  select(cumVol, supported_pb210_Bq_kg, total_pb210_actual_Bq_kg, unsupported_pb210_actual_Bq_kg, cs137_actual_Bq_kg, core_type) %>% 
+  pivot_longer(-c(cumVol, core_type)) %>% 
+  mutate(radioisotope = ifelse(grepl("cs137", name), "137Cs", "210Pb"))
+
+ggplot(plot1, aes(x = cumVol, y = value)) +
+  geom_point(aes(color = name)) +
+  geom_line(aes(color = name)) +
+  xlim(c(30,0)) +
+  #scale_x_reverse() +
+  coord_flip() +
+  facet_grid(core_type~radioisotope, scale="free")
+
+# This affects the inventories
+inventory_sum <- plot1 %>% 
+  filter(name %in% c("cs137_actual_Bq_kg", "unsupported_pb210_actual_Bq_kg")) %>% 
+  group_by(core_type, name) %>% 
+  summarise(inventory = sum(value)) %>% 
+  arrange(name)
+
+
+(inventory_sum)
+```
+
+We can also simulate 
+
+``` {r mobility example}
+
+a_dates_4 <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
+                                     pb210_mobility_factor = 5, 
+                                     cs137_mobility_factor = 5,
+                                     cs137_erosion_loss = 0.25, 
+                                     pb210_erosion_loss = 0.25) %>% 
+  mutate(core_type = "c. high mobility")
+
+a_dates_5 <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
+                                     pb210_mobility_factor = 2.5, 
+                                     cs137_mobility_factor = 2.5,
+                                     cs137_erosion_loss = 0.25, 
+                                     pb210_erosion_loss = 0.25) %>% 
+  mutate(core_type = "b. mid mobility")
+
+a_dates_6 <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
+                                     pb210_mobility_factor = 0.01, 
+                                     cs137_mobility_factor = 0.01,
+                                     cs137_erosion_loss = 0.25, 
+                                     pb210_erosion_loss = 0.25) %>% 
+  mutate(core_type = "a. low mobility")
+
+
+plot2 <- bind_rows(a_dates_4, a_dates_5, a_dates_6) %>% 
+  select(cumVol, supported_pb210_Bq_kg, total_pb210_actual_Bq_kg, unsupported_pb210_actual_Bq_kg, cs137_actual_Bq_kg, core_type) %>% 
+  pivot_longer(-c(cumVol, core_type)) %>% 
+  mutate(radioisotope = ifelse(grepl("cs137", name), "137Cs", "210Pb"))
+
+ggplot(plot2, aes(x = cumVol, y = value)) +
+  geom_point(aes(color = name)) +
+  geom_line(aes(color = name)) +
+  xlim(c(30,0)) +
+  #scale_x_reverse() +
+  coord_flip() +
+  facet_grid(core_type~radioisotope, scale="free")
+
+# This affects the inventories
+inventory_sum2 <- plot2 %>% 
+  filter(name %in% c("cs137_actual_Bq_kg", "unsupported_pb210_actual_Bq_kg")) %>% 
+  group_by(core_type, name) %>% 
+  summarise(inventory = sum(value)) %>% 
+  arrange(name)
+
+(inventory_sum2)
+
+```
+
+
