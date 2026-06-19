@@ -900,8 +900,8 @@ runCohortMem2 <- function(
   
   aboveground_biomass_species <- as.data.frame(aboveground_biomass_species)
   names(aboveground_biomass_species) <- species_codes
-  aboveground_biomass_species <- bind_cols(data.frame(year = simulation_years),
-                                           aboveground_biomass_species)
+  aboveground_biomass_species <- data.frame(year = simulation_years, 
+                                            aboveground_biomass_species)
   
   return(list(cohorts = long_df,
               scenario = data.frame(year = simulation_years,
