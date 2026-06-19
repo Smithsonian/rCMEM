@@ -97,7 +97,7 @@ runCohortMem2 <- function(
     msl,
     mhwMat,
     mlwMat) {
-  
+
   # Counters for later
   nFloods = length(flood_frequency)
   nSpecies = length(bMax)
@@ -894,8 +894,9 @@ runCohortMem2 <- function(
     inputYrs = as.vector(years_per_cohort),
     omPackingDensity = as.vector(omPackingDensity),
     mineralPackingDensity = as.vector(mineralPackingDensity)
-  ) %>% 
-    filter(complete.cases(.))
+  )
+  
+  long_df <- long_df[complete.cases(long_df), ]
   
   aboveground_biomass_species <- as.data.frame(aboveground_biomass_species)
   names(aboveground_biomass_species) <- species_codes
