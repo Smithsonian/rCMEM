@@ -10,6 +10,8 @@ calculateCarbonFlux <- function(cohorts,
                              scenario,
                              omToOcParams = list(B0=0, B1=0.48)) {
   
+  require(dplyr)
+  
   # Calculate C sequestration rate from cohorts table and add it to scenario table
 
   # To convert OM to OC
