@@ -1,11 +1,12 @@
 # 
 
 library(tidyverse)
+library(rCMEM)
 
 # Driver
 {
   # SLR
-  annapolis_gap_filled <- read_csv("data/sea_level/annapolis_gap_filled.csv")
+  annapolis_gap_filled <- read_csv("inst/extdata/sea_level/annapolis_gap_filled.csv")
   
   loess_model <- loess(msl_cm~year, data = annapolis_gap_filled)
   annapolis_gap_filled$loess_msl <- predict(loess_model, data.frame(year = annapolis_gap_filled$year))
@@ -215,10 +216,17 @@ a_mem_run <- runCohortMem2(run_spinup = 1,
                            rootToShoot = 1.7
                            )
 
-a_core <- buildSoilCore(cohorts = a_mem_run[[1]], coreYear = 2018, coreDepth = 200)
+a_core <- buildSoilCore(cohorts = a_mem_run[[1]], coreYear = 2018, coreDepth = 100)
+
+ggplot(a_core, aes(x = cumVol, y = (fast+slow+root)/(fast+slow+root+mineral))) +
+  geom_point() +
+  geom_line() +
+  xlab("Depth (cm)") +
+  ylab("Organic matter content (fraction)") 
 
 a_dates <- simulateRadioisotopeDates(core = a_core, cs137_anomaly = 0.6, 
                                      pb210_mobility_factor = 3, 
                                      cs137_mobility_factor = 3,
                                      cs137_erosion_loss = 0.5, 
                                      pb210_erosion_loss = 0.25)
+

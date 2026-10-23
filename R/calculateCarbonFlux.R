@@ -20,7 +20,7 @@ calculateCarbonFlux <- function(cohorts,
     omToOc <- function(om, B0=omToOcParams$B0, B1=omToOcParams$B1) {return(B0 + om*B1)}
   } else if (length(omToOcParams) == 3) {
     # If parameter list is 3 long, then it's quadratic
-    omToOc <- function(om, B0=omToOcParams$B, B1=omToOcParams$B1,
+    omToOc <- function(om, B0=omToOcParams$B0, B1=omToOcParams$B1,
                        B2=omToOcParams$B2) {return(B0 + om*B1 + om^2*B2)}
   } else {
     # If something else then trip an error message
