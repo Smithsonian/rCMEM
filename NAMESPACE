@@ -2,6 +2,8 @@
 
 export(buildSoilCore)
 export(calculateCarbonFlux)
+export(calculateSedimentAugmentation)
+export(initiateMoonScape)
 export(listCs137Scenarios)
 export(runCohortMem2)
 export(simulateRadioisotopeDates)

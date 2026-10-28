@@ -42,7 +42,8 @@ runCohortMem2(
   flood_frequency = c(0.5, 0.46497542, 0.03502458) * 705.79,
   msl,
   mhwMat,
-  mlwMat
+  mlwMat,
+  species_presence = NULL
 )
 }
 \arguments{
@@ -106,7 +107,10 @@ runCohortMem2(
 
 \item{captureRate}{numeric, the number of times that a column of sediment will settle out in a full tidal cycle}
 
-\item{suspendedSediment}{numeric, suspended sediment concentration in grams per cubic centimeter}
+\item{suspendedSediment}{Numeric scalar or vector of length
+scenario_iterations, specifying suspended sediment
+concentration (g/cm3). A scalar is held constant.
+During spinup, the first concentration is used.}
 
 \item{rootShape}{binary indicating the shape of the rooting zone, 0 for linear, 1 for exponential shape}
 
@@ -121,6 +125,10 @@ runCohortMem2(
 \item{mhwMat}{numeric matrix, the levels of annual average flood events for each stage of the sea level change scenario}
 
 \item{mlwMat}{numeric matrix, the levels of annual average ebb events for each stage of the sea level change scenario}
+
+\item{species_presence}{an optional numeric matrix manually controlling species presence and absence for a scenario, with with of n species and length of total scenario years. 0 indicates species absence and 1 presence}
+
+\item{sediment_augmentation}{setting which simulates a sediment augmentation scenario}
 }
 \value{
 a list with three data frames, scenario: an annual time series tracking annual inputs and outputs, cohorts: a long form table tracking mass cohorts and soil volumes, and species: species level predictions of

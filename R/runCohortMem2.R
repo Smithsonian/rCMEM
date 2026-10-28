@@ -30,7 +30,10 @@
 #' @param omDecayRateSlow numeric, annual mass lost of the slow decaying portion of soil organic matter
 #' @param recalcitrantFrac numeric, fraction of soil organic matter in the slow decaying pool
 #' @param captureRate numeric, the number of times that a column of sediment will settle out in a full tidal cycle
-#' @param suspendedSediment numeric, suspended sediment concentration in grams per cubic centimeter
+#' @param suspendedSediment Numeric scalar or vector of length
+#'   scenario_iterations, specifying suspended sediment
+#'   concentration (g/cm3). A scalar is held constant.
+#'   During spinup, the first concentration is used.
 #' @param rootShape  binary indicating the shape of the rooting zone, 0 for linear, 1 for exponential shape
 #' @param relTol numeric, relative tolerance of the non-linear equation solving algorithm
 #' @param safe_mode true or false, turns on safe_mode which will stop code and throw errors if some incongrous inputs are made
@@ -38,6 +41,9 @@
 #' @param msl numeric vector, the mean sea levels of each stage of a sea-level change scenario
 #' @param mhwMat numeric matrix, the levels of annual average flood events for each stage of the sea level change scenario 
 #' @param mlwMat numeric matrix, the levels of annual average ebb events for each stage of the sea level change scenario
+#' @param species_presence an optional numeric matrix manually controlling species presence and absence for a scenario, with with of n species and length of total scenario years. 0 indicates species absence and 1 presence
+#' @param sediment_augmentation setting which simulates a sediment augmentation scenario
+#' @param augmentation_window moving time window in calendar years needed for optional sediment agmenatation window
 #' 
 #' @return a list with three data frames, scenario: an annual time series tracking annual inputs and outputs, cohorts: a long form table tracking mass cohorts and soil volumes, and species: species level predictions of 
 #' @export
@@ -96,7 +102,11 @@ runCohortMem2 <- function(
     flood_frequency = c(0.5, 0.46497542, 0.03502458) * 705.79,
     msl,
     mhwMat,
-    mlwMat) {
+    mlwMat,
+    species_presence = NULL,
+    sediment_augmentation = F,
+    augmentation_window = 10
+    ) {
 
   # Counters for later
   nFloods = length(flood_frequency)
@@ -184,6 +194,68 @@ runCohortMem2 <- function(
     
   } # end save mode check
   
+  # Validate suspended sediment input
+  if (!is.numeric(suspendedSediment) ||
+      anyNA(suspendedSediment) ||
+      any(!is.finite(suspendedSediment)) ||
+      any(suspendedSediment < 0)) {
+    stop("suspendedSediment must contain finite, non-negative numeric values.")
+  }
+  
+  if (!length(suspendedSediment) %in% c(1, scenario_iterations)) {
+    stop(
+      "suspendedSediment must have length 1 or scenario_iterations."
+    )
+  }
+  
+  # Expand scalar to one value per scenario iteration
+  suspendedSediment <- rep(
+    suspendedSediment,
+    length.out = scenario_iterations
+  )
+  
+  # Initialize species presence
+  if (is.null(species_presence)) {
+    
+    species_presence <- matrix(
+      1,
+      nrow = scenario_iterations,
+      ncol = nSpecies
+    )
+    
+  } else {
+    
+    if (!is.matrix(species_presence)) {
+      stop("species_presence must be a matrix.")
+    }
+    
+    if (!identical(
+      dim(species_presence),
+      c(as.integer(scenario_iterations),
+        as.integer(nSpecies))
+    )) {
+      stop(
+        "species_presence must have scenario_iterations ",
+        "rows and nSpecies columns."
+      )
+    }
+    
+    if (anyNA(species_presence) ||
+        !all(species_presence %in% c(0, 1))) {
+      stop("species_presence must contain only 0 and 1.")
+    }
+    
+    if (!is.null(colnames(species_presence)) &&
+        !identical(colnames(species_presence), species_codes)) {
+      stop(
+        "species_presence columns must match ",
+        "species_codes in the same order."
+      )
+    }
+  }
+  
+  colnames(species_presence) <- species_codes
+  
   # Create some 
   is_spinup <- c(1)
   years_per_iteration <-c(years_per_scenario_iter)
@@ -248,6 +320,7 @@ runCohortMem2 <- function(
     belowground_biomass <- rep(NA, total_years)
     totalRootVolume <- rep(NA, total_years)
     sediment_delivered <- rep(NA, total_years)
+    sediment_augmented <- rep(0, total_years)
     rootToShoot_tracked  = rep(NA, total_years)
     rootTurnover_tracked = rep(NA, total_years)
     rootShape_tracked = rep(NA, total_years)
@@ -451,7 +524,10 @@ runCohortMem2 <- function(
         # Censor aboveground biomass so it can't be negative
         is_gt_zero <- as.numeric(uncensored_agb > 0)
         
-        potential_agb[species] <- is_gt_zero * uncensored_agb
+        potential_agb[species] <-
+          is_gt_zero * uncensored_agb *
+          species_presence[scenario_i[year], species]
+        
         max_agb <- max(max_agb, potential_agb[species])
         sum_agb <- sum_agb + potential_agb[species] 
         
@@ -563,7 +639,8 @@ runCohortMem2 <- function(
           1)
         
         # Calculate available sediment as a cumulative block of water
-        sediment_available<- suspendedSediment * flood_count * flood_depth
+        sediment_available <- suspendedSediment[scenario_i[year]] *
+          flood_count * flood_depth
         
         # Calculated delivered sediment
         tmp_mineral <- tmp_mineral + sediment_available * fraction_captured
@@ -572,6 +649,30 @@ runCohortMem2 <- function(
       
       # For each type of flood we're tracking
       sediment_delivered[year] <- tmp_mineral
+      
+      if (sediment_augmentation && !is_spinup[year]) {
+        
+        previous <- which(
+          seq_along(surface_elevation) < year &
+            !is_spinup
+        )
+        
+        if (length(previous) >= 2) {
+          
+          sediment_augmented[year] <-
+            calculateSedimentAugmentation(
+              msl = msl[scenario_i[previous]],
+              surface_elevation = surface_elevation[previous],
+              years = simulation_years[previous],
+              window = augmentation_window,
+              mineral_density = meanMineralPackingDensity
+            )
+        }
+      }
+      
+      # Total mineral sediment delivery
+      sediment_delivered[year] <-
+        sediment_delivered[year] + sediment_augmented[year]
       
     } else {
       
@@ -917,7 +1018,9 @@ runCohortMem2 <- function(
                                     rootDepthMax = rootDepthMax_tracked,
                                     rootPackingDensity = rootPackingDensity_tracked,
                                     lambda = lambda_tracked,
-                                    rootShape = rootShape_tracked),
+                                    rootShape = rootShape_tracked,
+                                    sediment_augmented = sediment_augmented
+                                    ),
               species = aboveground_biomass_species))
   
 }

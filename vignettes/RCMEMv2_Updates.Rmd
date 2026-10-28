@@ -39,8 +39,6 @@ First, let's set up some scenarios to run some comparisons over. These are from 
                    ncol = 3)
   mlwMat <- msl - (mhwMat-msl)
 
-  roxygen2::roxygenise("..")
-  
 ```
 
 ## Batching Scenarios
